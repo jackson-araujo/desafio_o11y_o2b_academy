@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Antes de inicializar esse arquivo é necessário criar um arquivo com o nome jks.sh, localizado em /root/
+# Necessário criar um arquivo com o nome jks.sh, localizado em /root/ . Ex.: touch jks.sh
 # Em seguida defina permissão de execução para o usuário proprietário do arquivo: chmod u+x jks.sh
-# Copie esse Script e cole o conteúdo dentro do arquivo: jks.sh
+# Copie o conteúdo do arquivo jks.txt e cole o conteúdo dentro do arquivo: jks.sh
 # Em seguida execute o script: ./jks.sh
 
 # Passo 01
