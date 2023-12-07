@@ -1,0 +1,583 @@
+#!/bin/bash
+
+# Antes de inicializar esse arquivo é necessário criar um arquivo com o nome jks.sh, localizado em /root/
+# Em seguida defina permissão de execução para o usuário proprietário do arquivo: chmod u+x jks.sh
+# Copie esse Script e cole o conteúdo dentro do arquivo: jks.sh
+# Em seguida execute o script: ./jks.sh
+
+# Passo 01
+# Criação do diretório: desafio_o11y. Localizado em /root.
+mkdir desafio_o11y
+
+# Passo 02
+# Acesso ao diretório /root/desafio_o11y/, criado anteriormente.
+cd desafio_o11y
+
+# Passo 03
+# Criação do diretório: observability-lab. Localizado em /root/desafio_o11y/ .
+mkdir observability-lab
+
+# Passo 04
+# Acesso ao diretório /root/desafio_o11y/observability-lab/, criado anteriormente .
+cd observability-lab
+
+# Passo 05
+# Criação dos diretórios: prometheus e python-app. Localizado em /root/desafio_o11y/observability-lab/ .
+mkdir prometheus python-app
+
+# Passo 07
+# Criação dos arquivos vazios: alertmanager.yml, docker-compose.yml e rules.yml. Localizado em /root/desafio_o11y/observability-lab/ .
+touch alertmanager.yml docker-compose.yml rules.yml
+
+# Passo 08
+# Acesso ao diretório /root/desafio_o11y/observability-lab,prometheus/ .
+cd prometheus
+
+# Passo 09
+# Criação dos arquivos vazio: prometheus.yml . Localizado em /root/desafio_o11y/observability-lab/prometheus/ .
+touch prometheus.yml 
+
+# Passo 10
+# Criação do diretório: provisioning. Localizado em /root/desafio_o11y/observability-lab/provisioning/.
+mkdir /root/desafio_o11y/observability-lab/provisioning
+
+# Passo 11
+# Acesso ao diretório python. Localizado em /root/desafio_o11y/observability-lab/python-app/ .
+cd /root/desafio_o11y/observability-lab/python-app
+
+# Passo 12
+# Criação dos arquivos vazio: app.py . Localizado em /root/desafio_o11y/observability-lab/python-app/ .
+touch app.py
+    
+# Passo 13
+# Anexando conteúdo ao arquivo: datasources.yml . Localizado em /root/desafio_o11y/observability-lab/provisioning/ .
+# Arquivo criado com objetivo de definir o datasources que será utililizado pelo Grafana. 
+cat >'/root/desafio_o11y/observability-lab/provisioning/datasources.yml' <<EOT
+apiVersion: 1
+
+datasources:
+   - name: Prometheus
+     type: prometheus
+     url: http://localhost:9090
+     access: proxy
+     isDefault: true
+EOT
+
+# Passo 14
+# Anexando conteúdo ao arquivo: prometheus.yml . Localizado em /root/desafio_o11y/observability-lab/prometheus/ .
+# Arquivo de configuração do Prometheus. Onde está setado configuração para o Alertmanager, Prometheus e Aplicação Web Python (python-app) .
+cat >'/root/desafio_o11y/observability-lab/prometheus/prometheus.yml' <<EOT
+global:
+  scrape_interval: 5s
+  
+# Configuração do Alertmanager
+  evaluation_interval: 10s
+rule_files:
+  - rules.yml
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+       - localhost:9093
+
+# Configuração dos serviços que serão monitorados pelo Prometheus.
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'python-app'
+    static_configs:
+      - targets: ['localhost:3001']
+EOT
+
+# Passo 15
+# Anexando conteúdo ao arquivo: app.py . Localizado em /root/desafio_o11y/observability-lab/python-app/ .
+# Arquivo de configuração da aplicação web baseada em Python (app.py).
+cat >'/root/desafio_o11y/observability-lab/python-app/app.py' <<EOT
+from flask import Flask, request, Response
+from prometheus_client import Counter, Histogram, generate_latest, REGISTRY
+import time
+
+app = Flask(__name__)
+
+# Métrica para contar erros
+error_count = Counter('app_errors_total', 'Total number of errors')
+
+# Métrica para medir o tempo de execução de uma função
+function_duration = Histogram('app_function_duration_seconds', 'Time spent in function execution', ['function_name'])
+
+# Rota para página inicial com mensagem de boas-vindas
+@app.route('/')
+def welcome():
+    welcome_message = """
+    <html>
+
+<head>
+    <style>
+        body {
+            background-color: #6a5acd; /* Define a cor de fundo azul petróleo */
+        }
+
+        .center {
+            text-align: center;
+            font-size: 90px;
+            color: white; /* Define a cor do texto como branco */
+            margin-top: 50vh; /* Centraliza verticalmente usando margem superior */
+            transform: translateY(-50%); /* Ajusta a posição verticalmente */
+        }
+
+        .links {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 24px;
+        }
+
+        .links a {
+            color: white;
+            text-decoration: underline;
+            margin: 0 10px;
+        }
+        
+    </style>
+</head>
+
+<body>
+    <div class="center">
+        <p>Bem-vindo ao desafio de Observabilidade da O2B Academy</p>
+    </div>
+    <div class="links">
+        <a href="/generate-error">Gerar Erro</a>
+        <a href="/calculate-duration">Calcular Duração</a>
+        <a href="/metrics">Métricas</a>
+    </div>
+</body>
+
+</html>
+    """
+    return welcome_message
+
+# Rota para gerar erros intencionalmente
+@app.route('/generate-error')
+def generate_error():
+    try:
+        # Simulando uma exceção
+        1 / 0
+    except Exception as e:
+        # Incrementando a métrica de erros
+        error_count.inc()
+        return f"Erro gerado: {str(e)}", 500
+
+# Rota para medir o tempo de execução
+@app.route('/calculate-duration')
+def calculate_duration():
+    start_time = time.time()
+    # Simulando uma operação demorada
+    time.sleep(2)
+    function_duration.labels(function_name='calculate_duration').observe(time.time() - start_time)
+    return "Tempo de execução medido com sucesso"
+
+# Rota para expor métricas do Prometheus com quebras de linha
+@app.route('/metrics')
+def metrics():
+    metrics_data = generate_latest(REGISTRY)
+    return Response(metrics_data, content_type='text/plain; version=0.0.4')
+
+# Rota para mostrar métricas no formato prometheus
+@app.route('/metrics-text')
+def metrics_text():
+    return MetricsHandler(REGISTRY).do_GET(request)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=3001)
+EOT
+
+# Passo 16
+# Anexando conteúdo ao arquivo: docker-compose.yml . Localizado em /root/desafio_o11y/observability-lab/ .
+# Arquivo de configuração do docker-compose para criar e inicializar os conteiners do Prometheus, Grafana e Alertmanager.
+cat >'/root/desafio_o11y/observability-lab/docker-compose.yml' <<EOT
+version: '3'
+services:
+#Configuração do Prometheus
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - 9090:9090
+    network_mode: "host"      
+    volumes:
+# Importa a configuração do prometheus (#Passo 14). Na inicialização do conteiner.
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+# Importa a configuração da rules.yml (#Passo 17), que será utilizado pelo Alertmanager. Na inicialização do conteiner.	  
+      - ./rules.yml:/etc/prometheus/rules.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+#Configuração do Grafana      
+  grafana:
+    image: grafana/grafana
+    volumes:
+# Provisionamento o datasources do Grafana.
+      - ./provisioning:/etc/grafana/provisioning/datasources
+# Provisionamento o dashboard do Grafana, localizado no # Passo 21.
+      - ./grafana/default.yaml:/etc/grafana/provisioning/dashboards/default.yaml
+# # Provisionamento o dashboard do Grafana, localizado no # Passo 23.
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    ports: 
+      - 3000:3000
+    network_mode: "host"
+
+#Configuração do Alertmanager  
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - 9093:9093
+    network_mode: "host"
+EOT
+
+# Passo 17
+# Anexando conteúdo ao arquivo: rules.yml . Localizado em /root/desafio_o11y/observability-lab/ .
+# Arquivo de configuração referente a regra de alerta. Definido no passo 14 na configuração interna do Alertmanager.
+cat >'/root/desafio_o11y/observability-lab/rules.yml' <<EOT
+groups:
+ - name: Error greater than 5
+   rules:
+   - alert: ErrorGreaterThan5
+     expr: app_errors_total > 5
+     for: 10s
+EOT
+
+# Passo 18
+# Anexando conteúdo ao arquivo: alertmanager.yml . Localizado em /root/desafio_o11y/observability-lab/ .
+# Arquivo de configuração do Alertemanager, enviando os alertas recebidos ao webhoo-site e discord.
+cat >'/root/desafio_o11y/observability-lab/alertmanager.yml' <<EOT
+global:
+  resolve_timeout: 5m
+route:
+  receiver: 'webhook'
+
+receivers:
+  - name: 'webhook'
+    webhook_configs:
+      - url: 'https://webhook.site/435c4253-72da-4842-b0e4-bbbfca1c9073'
+     
+    discord_configs:
+      - webhook_url: 'https://discord.com/api/webhooks/1177274929666850846/ByhUtD_wt2pycUqiA7dTsYDITd1xoODIbvdn2eMz-qt0Jg0QnOjrY3hzCTWmuh_GZIw8'
+EOT
+
+# Passo 19
+# Criação do diretório: grafana . Localizado em  /root/desafio_o11y/observability-lab/.
+mkdir /root/desafio_o11y/observability-lab/grafana
+
+# Passo 20
+#Criação do arquivo vazio: default.yaml . Localizado em /root/desafio_o11y/observability-lab/grafana/ .
+touch /root/desafio_o11y/observability-lab/grafana/default.yaml
+
+# Passo 21
+# Anexando conteúdo ao arquivo:default.yaml . Localizado em /root/desafio_o11y/observability-lab/grafana/ .
+# Utilizado para provisionar o dashboard no Grafana. Configurado no passo # Passo 16
+cat >'/root/desafio_o11y/observability-lab/grafana/default.yaml' <<EOT
+apiVersion: 1
+
+providers:
+  - name: "Dashboard provider"
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
+EOT
+
+# Passo 22
+# Criação do diretório: dashboards. Localizado em /root/desafio_o11y/observability-lab/grafana/ .
+mkdir /root/desafio_o11y/observability-lab/grafana/dashboards
+
+# Passo 23
+touch /root/desafio_o11y/observability-lab/grafana/dashboards/main-dashboard.json
+
+# Passo 24
+# Anexando conteúdo ao arquivo: main-dashboard.json . Localizado em /root/desafio_o11y/observability-lab/grafana/dashboards/ 
+# Arquivo no formato json, onde contém configuração do Dashboard no Grafana.
+cat >'/root/desafio_o11y/observability-lab/grafana/dashboards/main-dashboard.json' <<EOT
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "description": "Meu primeiro painel",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "series",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "disableTextWrap": false,
+          "editorMode": "builder",
+          "expr": "app_errors_total",
+          "fullMetaSearch": false,
+          "includeNullMetadata": true,
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A",
+          "useBackend": false
+        }
+      ],
+      "title": "Painel 01",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus"
+      },
+      "description": "Meu segundo painel",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "disableTextWrap": false,
+          "editorMode": "builder",
+          "expr": "app_function_duration_seconds_count",
+          "fullMetaSearch": false,
+          "includeNullMetadata": true,
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A",
+          "useBackend": false
+        }
+      ],
+      "title": "Painel 02",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "New dashboard",
+  "uid": "f621015a-93c7-43f5-b0d3-8d91782f94a1",
+  "version": 1,
+  "weekStart": ""
+}
+EOT
+
+# Passo 25
+# Instalação do Flask e Prometheus client
+pip install Flask prometheus_client
+
+# Passo 26
+# Executado aplicação web baseada em Pyhton em segundo plano. Localizado em /root/desafio_o11y/observability-lab/python-app/ .
+python app.py &
+
+# Passo 27
+# Acesso ao diretório /root/desafio_o11y/observability-lab/ .
+cd /root/desafio_o11y/observability-lab/
+
+# Passo 28
+# Inicialização dos conteiners (Prometheus, Grafana e Alertmanager) via docker-compose. Criado no passo 16 .
+docker-compose up -d
+
+# Passo 29
+# Visualização dos Status do processos referente aos conteiners criado anteriormente.
+docker-compose ps
+
+# Passo 30
+# Encerrar o servidor web que está executando em segundo plano. 
+ps -ef | grep 'app.py'$ | kill `awk '{print $2}'`
+
+# Passo 31
+# Inicializando o servidor web, executando-o em primeiro plano.
+python /root/desafio_o11y/observability-lab/python-app/app.py
+
+# Passo 32
+# Exclusão do arquivo jks.sh, criado em  /root/ .
+rm -f /root/jks.sh
+
+# Passo 33
+# Sair
+exit
